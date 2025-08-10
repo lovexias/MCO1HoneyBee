@@ -1,3 +1,4 @@
+breed [hives hive]
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ; Honey Bee System Model
 ; Each tick = 1 day; bee lifespan = 7 weeks (49 days)
@@ -39,11 +40,21 @@ crops-own [
 ;; ------------------------------
 ;; BEE VARIABLES
 ;; ------------------------------
+
+;; ------------------------------
+;; HIVE VARIABLES
+;; ------------------------------
+hives-own [
+  stores            ;; nectar stored in this hive
+]
+
 bees-own [
-  carrying-nectar ;; amount of nectar currently carried back to hive
-  age             ;; age in days (ticks)
-  full?           ;; flag: is this bee "full" and ready to return?
-  days-since-food  ;; days since last nectar collection
+  carrying-nectar   ;; amount of nectar currently carried back to hive
+  age               ;; age in days (ticks)
+  full?             ;; flag: is this bee "full" and ready to return?
+  days-since-food   ;; days since last nectar collection
+
+  home-hive         ;; the hive turtle this bee returns to
 ]
 
 ;; ------------------------------
@@ -57,26 +68,41 @@ to setup
   set-default-shape bees "bug"
   set-default-shape flowers "circle"
   set-default-shape crops "square"
+  set-default-shape hives "house"
 
   ;; initialize all global counters/trackers
-  set hive-resources 0 ;; no stored nectar at start
+  set hive-resources 0                    ;; no stored nectar at start
   set pollination-success 0
   set crop-yield 0
-  set temperature initial-temperature    ;; start at slider-defined temperature
+  set temperature initial-temperature     ;; start at slider-defined temperature
   set starvation-threshold starvation-threshold
 
   ;; create environment
   setup-flowers                           ;; seed flower patches
   setup-crops                             ;; seed crop patches
 
+  ;; --- create hives ---
+  create-hives initial-hives [
+    setxy random-xcor random-ycor
+    set color brown
+    set size 2
+    set stores 0
+  ]
+
   ;; create initial bees
   create-bees initial-bees [
     setxy random-xcor random-ycor         ;; place randomly
+    set home-hive nobody                  ;; initialize as nobody (avoid 0 → move-to error)
     set carrying-nectar 0                 ;; empty nectar load
     set age 0                             ;; start life timer
     set days-since-food 0                 ;; just fed
     set full? false                       ;; not yet ready to return
     set color yellow                      ;; bees appear yellow
+    ;; assign a persistent home hive (nearest); if none, leave as nobody
+    if any? hives [
+      let me self
+      set home-hive min-one-of hives [ distance me ]
+    ]
   ]
 
   reset-ticks                             ;; start the tick counter at 0
@@ -89,9 +115,9 @@ end
 to setup-flowers
   ask n-of initial-flowers patches [
     sprout-flowers 1 [
-      set nectar random 5 + 5            ;; random nectar amount 5–9
-      set pollinated? false              ;; no visits yet
-      set color orange                   ;; orange indicates nectar presence
+      set nectar random 5 + 5             ;; random nectar amount 5–9
+      set pollinated? false               ;; no visits yet
+      set color orange                    ;; orange indicates nectar presence
     ]
   ]
 end
@@ -103,9 +129,9 @@ end
 to setup-crops
   ask n-of initial-crops patches with [not any? turtles-here] [
     sprout-crops 1 [
-      set pollinated? false              ;; not pollinated yet
-      set growth 0                       ;; initial growth stage
-      set color green                    ;; green indicates crop
+      set pollinated? false               ;; not pollinated yet
+      set growth 0                        ;; initial growth stage
+      set color green                     ;; green indicates crop
     ]
   ]
 end
@@ -115,7 +141,7 @@ end
 ;; One tick of simulation: update environment and agents
 ;; ------------------------------
 to go
-  update-temperature       ;; environmental fluctuation
+  update-temperature                      ;; environmental fluctuation
 
   ;; each bee moves, forages, and ages
   ask bees [
@@ -127,11 +153,11 @@ to go
   ;; bees that are "full" return nectar to hive
   ask bees with [full?] [ return-to-hive ]
 
-  regenerate-flowers       ;; flowers rebuild nectar after pollination
-  recolor-flowers          ;; adjust visual color based on nectar/pollination
-  grow-crops               ;; crops progress toward yield and die when done
-  reproduce-bees           ;; spawn new bees if hive-resources sufficient
-  update-pollination-metrics ;; recalculate global pollination-success
+  regenerate-flowers                      ;; flowers rebuild nectar after pollination
+  recolor-flowers                         ;; adjust visual color based on nectar/pollination
+  grow-crops                              ;; crops progress toward yield and die when done
+  reproduce-bees                          ;; spawn new bees if hive-resources sufficient
+  update-pollination-metrics              ;; recalculate global pollination-success
   tick
 end
 
@@ -149,14 +175,14 @@ end
 ;; Random walk
 ;; ------------------------------
 to move
-  if full? [ stop ]                      ;; if carrying nectar, don’t forage
-  ifelse any? flowers [                     ;; are there flowers anywhere?
+  if full? [ stop ]                        ;; if carrying nectar, don’t forage
+  ifelse any? flowers [                    ;; are there flowers anywhere?
     let nearest min-one-of flowers [distance myself]
-    face nearest                        ;; turn toward that flower
-    fd 1                                ;; step one patch closer
+    face nearest                           ;; turn toward that flower
+    fd 1                                   ;; step one patch closer
   ] [
     ;; fallback to a bit of random wandering
-    rt random 50 - random 50
+    rt (random 50) - (random 50)
     fd 1
   ]
 end
@@ -186,11 +212,11 @@ end
 ;; Mark flower/crop as pollinated and change color
 ;; ------------------------------
 to pollinate [target]
-  if not [pollinated?] of target [      ;; only first visit counts
+  if not [pollinated?] of target [        ;; only first visit counts
     ask target [
-      set pollinated? true               ;; flag as pollinated
-      set color pink                     ;; visual feedback
-      if breed = crops [                ;; if it's a crop, increase its growth
+      set pollinated? true                ;; flag as pollinated
+      set color pink                      ;; visual feedback
+      if breed = crops [                  ;; if it's a crop, increase its growth
         set growth growth + 1
       ]
     ]
@@ -204,7 +230,7 @@ end
 to recolor-flowers
   ask flowers [
     ifelse pollinated? [
-      set color pink                   ;; fully pollinated
+      set color pink                      ;; fully pollinated
     ] [
       ;; show nectar level from light→dark orange
       set color scale-color orange nectar 0 10
@@ -219,11 +245,11 @@ end
 to collect-nectar [target]
   let nectar-available [nectar] of target
   if nectar-available > 0 [
-    let collected min list nectar-available 3  ;; carry up to 3 units per day
+    let collected min list nectar-available 3    ;; carry up to 3 units per day
     ask target [ set nectar nectar - collected ]
     set carrying-nectar carrying-nectar + collected
-    if collected > 0 [ set days-since-food 0 ] ;; reset starvation counter
-    if carrying-nectar >= 10 [ set full? true ] ;; threshold to return
+    if collected > 0 [ set days-since-food 0 ]   ;; reset starvation counter
+    if carrying-nectar >= 10 [ set full? true ]  ;; threshold to return
   ]
 end
 
@@ -232,11 +258,22 @@ end
 ;; Deposit nectar and reset bee state
 ;; ------------------------------
 to return-to-hive
-  move-to one-of patches with [pxcor = 0 and pycor = 0]  ;; hive at origin
-  set hive-resources hive-resources + carrying-nectar     ;; add nectar to store
+  ;; ensure bee has a valid home hive
+  if not any? hives [ stop ]                      ;; no hives → nothing to do
+  if not is-turtle? home-hive [                   ;; unassigned (0) or nobody
+    let me self
+    set home-hive min-one-of hives [ distance me ]
+  ]
+  if not is-turtle? home-hive [ stop ]            ;; still invalid → bail
+
+  ;; move, deposit, reset
+  let deposit carrying-nectar
+  move-to home-hive
+  ask home-hive [ set stores stores + deposit ]
+  set hive-resources hive-resources + deposit
   set carrying-nectar 0
-  set days-since-food 0  ;; reset hunger after feeding
-  set full? false                                        ;; ready to forage again
+  set days-since-food 0
+  set full? false
 end
 
 ;; ------------------------------
@@ -246,7 +283,7 @@ end
 to regenerate-flowers
   ask flowers [
     if pollinated? and nectar < 10 and temperature >= 15 and temperature <= 30 [
-      set nectar nectar + 1        ;; regen one unit per tick under good temps
+      set nectar nectar + 1               ;; regen one unit per tick under good temps
     ]
   ]
 end
@@ -259,8 +296,8 @@ to grow-crops
   ask crops [
     if pollinated? and growth < 5 [ set growth growth + 0.1 ] ;; gradual growth
     if growth >= 5 [
-      set crop-yield crop-yield + 1  ;; record a yield event
-      die                             ;; remove the harvested crop
+      set crop-yield crop-yield + 1      ;; record a yield event
+      die                                ;; remove the harvested crop
     ]
   ]
 end
@@ -270,13 +307,20 @@ end
 ;; Spawn new bees using hive resources
 ;; ------------------------------
 to reproduce-bees
-  if hive-resources >= 20 [             ;; require 20 units to reproduce
+  if hive-resources >= 20 [               ;; require 20 units to reproduce
     create-bees 20 [                      ;; produce 20 new bees
       setxy random-xcor random-ycor
+      set home-hive nobody                ;; initialize (avoid 0)
       set carrying-nectar 0
       set age 0
+      set days-since-food 0
       set full? false
       set color yellow
+      if any? hives [
+        let me self
+        set home-hive min-one-of hives [ distance me ]
+        ;; move-to home-hive              ;; optional: start newborns at hive
+      ]
     ]
     set hive-resources hive-resources - 20 ;; deduct resource cost
   ]
@@ -287,11 +331,11 @@ end
 ;; Bees die of old age (49 days) or extreme temperature
 ;; ------------------------------
 to age-bee
-  set age age + 1                       ;; age by one day
-  set days-since-food days-since-food + 1 ;; hunger increases by one day
-  if age > 49                           ;; die after 49 days
-     or temperature < 10                ;; or if too cold
-     or temperature > 35                ;; or if too hot
+  set age age + 1                          ;; age by one day
+  set days-since-food days-since-food + 1  ;; hunger increases by one day
+  if age > 49                              ;; die after 49 days
+     or temperature < 10                   ;; or if too cold
+     or temperature > 35                   ;; or if too hot
      or days-since-food > starvation-threshold [ ;; or if starved
     die
   ]
@@ -375,7 +419,7 @@ initial-bees
 initial-bees
 1
 100
-20.0
+40.0
 1
 1
 NIL
@@ -390,7 +434,7 @@ initial-flowers
 initial-flowers
 0
 200
-50.0
+75.0
 1
 1
 NIL
@@ -567,6 +611,21 @@ false
 "" ""
 PENS
 "yield" 1.0 0 -10899396 true "" "plot crop-yield"
+
+SLIDER
+722
+454
+898
+487
+initial-hives
+initial-hives
+1
+10
+5.0
+1
+1
+NIL
+HORIZONTAL
 
 @#$#@#$#@
 ## WHAT IS IT?
