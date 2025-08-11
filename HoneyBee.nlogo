@@ -330,13 +330,39 @@ end
 ;; AGING & DEATH
 ;; Bees die of old age (49 days) or extreme temperature
 ;; ------------------------------
+;; ------------------------------
+;; TEMPERATURE-DRIVEN MORTALITY
+;; Map temperature to daily death probability
+;; ------------------------------
+to-report temp-death-prob
+  let t temperature
+  ;; cold-side buckets
+  if t < 5   [ report 0.5 + random-float 0.5 ]  ;; <5°C → 50–100%
+  if t <= 8  [ report 0.25 ]                    ;; 5–8°C → 25%
+  if t <= 12 [ report 0.10 ]                    ;; 9–12°C → 10%
+  if t <= 16 [ report 0.05 ]                    ;; 13–16°C → 5%
+
+  if t <= 36 [ report 0.02 ]        ;; ≤36°C → 2%
+  if t <= 38 [ report 0.05 ]        ;; 37–38°C → 5%
+  if t <= 40 [ report 0.10 ]        ;; 39–40°C → 10%
+  if t <= 42 [ report 0.25 ]        ;; 41–42°C → 25%
+  report 0.5 + random-float 0.5     ;; >42°C → 50–100%
+end
+
+;; ------------------------------
+;; AGING & DEATH
+;; Bees die of old age/starvation + temperature-probability
+;; ------------------------------
 to age-bee
-  set age age + 1                          ;; age by one day
-  set days-since-food days-since-food + 1  ;; hunger increases by one day
-  if age > 49                              ;; die after 49 days
-     or temperature < 10                   ;; or if too cold
-     or temperature > 35                   ;; or if too hot
-     or days-since-food > starvation-threshold [ ;; or if starved
+  set age age + 1
+  set days-since-food days-since-food + 1
+  ;; hard limits
+  if age > 49 or days-since-food > starvation-threshold [
+    die
+    stop
+  ]
+  ;; temperature aspect (probabilistic per table)
+  if random-float 1 < temp-death-prob [
     die
   ]
 end
@@ -464,7 +490,7 @@ initial-temperature
 initial-temperature
 0
 40
-25.0
+12.0
 1
 1
 NIL
