@@ -463,10 +463,10 @@ ticks
 30.0
 
 BUTTON
-719
-58
-783
-91
+710
+20
+774
+53
 Setup
 setup
 NIL
@@ -480,10 +480,10 @@ NIL
 1
 
 BUTTON
-719
-109
-782
-142
+790
+19
+853
+52
 Go
 go
 T
@@ -497,10 +497,10 @@ NIL
 1
 
 SLIDER
-721
-157
-893
-190
+706
+64
+878
+97
 initial-bees
 initial-bees
 1
@@ -512,10 +512,10 @@ NIL
 HORIZONTAL
 
 SLIDER
-722
-215
-894
-248
+707
+122
+879
+155
 initial-flowers
 initial-flowers
 0
@@ -527,10 +527,10 @@ NIL
 HORIZONTAL
 
 SLIDER
-724
-278
-896
-311
+709
+185
+881
+218
 initial-crops
 initial-crops
 0
@@ -542,10 +542,10 @@ NIL
 HORIZONTAL
 
 SLIDER
-724
-339
-896
-372
+709
+246
+881
+279
 initial-temperature
 initial-temperature
 0
@@ -666,10 +666,10 @@ PENS
 "success" 1.0 0 -2064490 true "" "plot pollination-success"
 
 SLIDER
-724
-395
-896
-428
+709
+302
+881
+335
 starvation-threshold
 starvation-threshold
 1
@@ -699,10 +699,10 @@ PENS
 "yield" 1.0 0 -10899396 true "" "plot crop-yield"
 
 SLIDER
-722
-454
-898
-487
+707
+361
+883
+394
 initial-hives
 initial-hives
 1
@@ -714,10 +714,10 @@ NIL
 HORIZONTAL
 
 SLIDER
-21
-135
-193
-168
+707
+407
+879
+440
 seed-prob
 seed-prob
 0
