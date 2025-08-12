@@ -12,6 +12,8 @@ globals [
   hive-resources      ;; total nectar resources stored in the hive
   pollination-success ;; count of flowers successfully pollinated
   crop-yield          ;; cumulative number of crops that matured and yielded produce
+  flower-min-age      ;; minimum lifespan in days
+  flower-max-age      ;; maximum lifespan in days
 ]
 
 ;; ------------------------------
@@ -27,6 +29,9 @@ breed [crops crop]     ;; crop plants dependent on pollination
 flowers-own [
   nectar      ;; amount of nectar available to collect
   pollinated? ;; flag: has this flower been visited/pollinated by a bee?
+  f-age                ;; age in days (ticks)
+  f-lifespan           ;; this individual flower's max age
+  f-seed-cooldown      ;; ticks until this flower may try to seed again
 ]
 
 ;; ------------------------------
@@ -77,6 +82,11 @@ to setup
   set temperature initial-temperature     ;; start at slider-defined temperature
   set starvation-threshold starvation-threshold
 
+  ;; ---- flower lifespan & reproduction defaults ----
+  set flower-min-age 30       ;; flowers live at least ~30 days
+  set flower-max-age 60       ;; up to ~60 days
+
+
   ;; create environment
   setup-flowers                           ;; seed flower patches
   setup-crops                             ;; seed crop patches
@@ -118,6 +128,9 @@ to setup-flowers
       set nectar random 5 + 5             ;; random nectar amount 5–9
       set pollinated? false               ;; no visits yet
       set color orange                    ;; orange indicates nectar presence
+
+      set f-age 0
+      set f-lifespan (flower-min-age + random (flower-max-age - flower-min-age + 1))
     ]
   ]
 end
@@ -154,6 +167,7 @@ to go
   ask bees with [full?] [ return-to-hive ]
 
   regenerate-flowers                      ;; flowers rebuild nectar after pollination
+  age-flowers                             ;; flowers die of old age
   recolor-flowers                         ;; adjust visual color based on nectar/pollination
   grow-crops                              ;; crops progress toward yield and die when done
   reproduce-bees                          ;; spawn new bees if hive-resources sufficient
@@ -212,16 +226,24 @@ end
 ;; Mark flower/crop as pollinated and change color
 ;; ------------------------------
 to pollinate [target]
-  if not [pollinated?] of target [        ;; only first visit counts
-    ask target [
-      set pollinated? true                ;; flag as pollinated
-      set color pink                      ;; visual feedback
-      if breed = crops [                  ;; if it's a crop, increase its growth
-        set growth growth + 1
+  ask target [
+    ;; first visit only
+    if not pollinated? [
+      set pollinated? true
+      set color pink
+      if breed = crops [ set growth growth + 1 ]
+    ]
+
+    ;; flowers may try to seed on EVERY visit (respect cooldown)
+    if breed = flowers [
+      if f-seed-cooldown <= 0 [
+        if random-float 1 < seed-prob [ flower-reproduce self ]
+        set f-seed-cooldown 5
       ]
     ]
   ]
 end
+
 
 ;; ------------------------------
 ;; FLOWER RECOLORING
@@ -327,6 +349,30 @@ to reproduce-bees
 end
 
 ;; ------------------------------
+;; FLOWER REPRODUCTION
+;; Spawn new flowers when bee pollinates
+;; ------------------------------
+to flower-reproduce [parent-flower]
+  let candidates ( [neighbors] of parent-flower ) with
+    [ not any? flowers-here and not any? crops-here and not any? hives-here ]
+  if any? candidates [
+    ask one-of candidates [
+      sprout-flowers 1 [
+        set nectar 5 + random 5
+        set pollinated? false
+        set color orange
+        set f-age 0
+        set f-lifespan (flower-min-age + random (flower-max-age - flower-min-age + 1))
+        set f-seed-cooldown 3
+      ]
+    ]
+  ]
+end
+
+
+
+
+;; ------------------------------
 ;; AGING & DEATH
 ;; Bees die of old age (49 days) or extreme temperature
 ;; ------------------------------
@@ -366,6 +412,20 @@ to age-bee
     die
   ]
 end
+
+;; ------------------------------
+;; AGING & DEATH
+;; Flowers die of old age
+;; ------------------------------
+to age-flowers
+  ask flowers [
+    set f-age f-age + 1
+    if f-seed-cooldown > 0 [ set f-seed-cooldown f-seed-cooldown - 1 ]
+    if f-age > f-lifespan [ die ]
+  ]
+end
+
+
 
 ;; ------------------------------
 ;; METRICS UPDATE
@@ -490,7 +550,7 @@ initial-temperature
 initial-temperature
 0
 40
-12.0
+26.0
 1
 1
 NIL
@@ -649,6 +709,21 @@ initial-hives
 10
 5.0
 1
+1
+NIL
+HORIZONTAL
+
+SLIDER
+21
+135
+193
+168
+seed-prob
+seed-prob
+0
+1
+0.2
+0.1
 1
 NIL
 HORIZONTAL
