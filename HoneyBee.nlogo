@@ -14,6 +14,9 @@ globals [
   crop-yield          ;; cumulative number of crops that matured and yielded produce
   flower-min-age      ;; minimum lifespan in days
   flower-max-age      ;; maximum lifespan in days
+  hive-feed-amount    ;; how much a bee eats at the hive per visit (units)
+  hive-min-store      ;; minimum hive stores required before bees tap the pantry
+
 ]
 
 ;; ------------------------------
@@ -39,7 +42,10 @@ flowers-own [
 ;; ------------------------------
 crops-own [
   pollinated? ;; flag: has crop been pollinated?
-  growth      ;; growth progress towards yielding (e.g., fruit)
+  growth      ;; growth progress towards yielding
+  c-age              ;; days since planted
+  c-max-age          ;; hard cap (e.g., 120 days)
+  pollination-deadline ;; must be pollinated by this day
 ]
 
 ;; ------------------------------
@@ -86,6 +92,8 @@ to setup
   set flower-min-age 30       ;; flowers live at least ~30 days
   set flower-max-age 60       ;; up to ~60 days
 
+  set hive-feed-amount 1
+  set hive-min-store 5
 
   ;; create environment
   setup-flowers                           ;; seed flower patches
@@ -131,6 +139,8 @@ to setup-flowers
 
       set f-age 0
       set f-lifespan (flower-min-age + random (flower-max-age - flower-min-age + 1))
+      set f-seed-cooldown 3
+
     ]
   ]
 end
@@ -145,6 +155,9 @@ to setup-crops
       set pollinated? false               ;; not pollinated yet
       set growth 0                        ;; initial growth stage
       set color green                     ;; green indicates crop
+      set c-age 0
+      set c-max-age 40
+      set pollination-deadline 40  ;; if no bee visit by day 40 → wither
     ]
   ]
 end
@@ -170,6 +183,8 @@ to go
   age-flowers                             ;; flowers die of old age
   recolor-flowers                         ;; adjust visual color based on nectar/pollination
   grow-crops                              ;; crops progress toward yield and die when done
+  age-crops
+  replant-crop
   reproduce-bees                          ;; spawn new bees if hive-resources sufficient
   update-pollination-metrics              ;; recalculate global pollination-success
   tick
@@ -190,6 +205,20 @@ end
 ;; ------------------------------
 to move
   if full? [ stop ]                        ;; if carrying nectar, don’t forage
+  if need-hive-food? [
+    if not is-turtle? home-hive [
+      let me self
+      set home-hive min-one-of hives [ distance me ]
+    ]
+    if is-turtle? home-hive [
+      face home-hive
+      fd 1
+      ;; if we reached (or are on) the hive, eat now
+      if distance home-hive < 1.1 [ eat-at-hive ]
+    ]
+    stop
+  ]
+
   ifelse any? flowers [                    ;; are there flowers anywhere?
     let nearest min-one-of flowers [distance myself]
     face nearest                           ;; turn toward that flower
@@ -298,6 +327,26 @@ to return-to-hive
   set full? false
 end
 
+;; Should this bee go home to eat from hive stores?
+to-report need-hive-food?
+  ;; Go home when past half the starvation threshold AND hive has enough stores
+  report (days-since-food >= (starvation-threshold / 2))
+         and any? hives
+         and is-turtle? home-hive
+         and ([stores] of home-hive) > hive-min-store
+end
+
+;; Consume from the hive pantry (and keep global hive-resources consistent)
+to eat-at-hive
+  if not is-turtle? home-hive [ stop ]
+  if [stores] of home-hive <= 0 [ stop ]
+  let amt hive-feed-amount
+  ask home-hive [ set stores max list 0 (stores - amt) ]
+  set hive-resources max list 0 (hive-resources - amt)
+  set days-since-food 0
+end
+
+
 ;; ------------------------------
 ;; FLOWER REGENERATION
 ;; Refill nectar over time if pollinated
@@ -323,6 +372,33 @@ to grow-crops
     ]
   ]
 end
+
+;; ------------------------------
+;; QUARTERLY CROP REPLANTING
+;; ------------------------------
+to replant-crop
+  ;; every 90 ticks (3 months)
+  if ticks mod 90 = 0 [
+    if count bees = 0 [ stop ]  ;; no bees -> no planting
+
+    let num-to-plant (initial-crops / 2)  ;; replant half the starting count
+    ask n-of num-to-plant patches with [
+      ;; avoid planting on top of anything important
+      not any? flowers-here and not any? crops-here and not any? hives-here
+    ] [
+      sprout-crops 1 [
+        set pollinated? false
+        set growth 0
+        set color green
+        set c-age 0
+        set c-max-age 40
+        set pollination-deadline 40   ;; unpollinated -> wither after 40 days
+      ]
+    ]
+  ]
+end
+
+
 
 ;; ------------------------------
 ;; BEE REPRODUCTION
@@ -368,14 +444,6 @@ to flower-reproduce [parent-flower]
     ]
   ]
 end
-
-
-
-
-;; ------------------------------
-;; AGING & DEATH
-;; Bees die of old age (49 days) or extreme temperature
-;; ------------------------------
 ;; ------------------------------
 ;; TEMPERATURE-DRIVEN MORTALITY
 ;; Map temperature to daily death probability
@@ -425,6 +493,19 @@ to age-flowers
   ]
 end
 
+;; ------------------------------
+;; AGING & DEATH
+;; Crops  die of old age
+;; ------------------------------
+to age-crops
+  ask crops [
+    set c-age c-age + 1
+    ;; wither if never pollinated by the deadline
+    if (not pollinated?) and (c-age > pollination-deadline) [ die ]
+    ;; hard stop: even if pollinated, a crop can’t live forever
+    if c-age > c-max-age [ die ]
+  ]
+end
 
 
 ;; ------------------------------
@@ -550,7 +631,7 @@ initial-temperature
 initial-temperature
 0
 40
-26.0
+25.0
 1
 1
 NIL
@@ -722,8 +803,8 @@ seed-prob
 seed-prob
 0
 1
-0.2
-0.1
+0.15
+0.01
 1
 NIL
 HORIZONTAL
